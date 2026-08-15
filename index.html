@@ -283,6 +283,11 @@
       </div>
 
       <div class="field">
+        <label for="discordId">Discord do militar <span style="color:#6E7355;">(opcional — marca a pessoa no canal)</span></label>
+        <input type="text" id="discordId" placeholder="ID do Discord. Ex: 284640857195610112">
+      </div>
+
+      <div class="field">
         <label for="motivo" id="motivoLabel">Motivo da advertência</label>
         <textarea id="motivo" placeholder="Descreva a transgressão disciplinar cometida..." required></textarea>
       </div>
@@ -355,6 +360,11 @@
       </div>
 
       <div class="field">
+        <label for="promoDiscordId">Discord do militar <span style="color:#6E7355;">(opcional — marca a pessoa no canal)</span></label>
+        <input type="text" id="promoDiscordId" placeholder="ID do Discord. Ex: 284640857195610112">
+      </div>
+
+      <div class="field">
         <label for="promoMotivo">Motivo / observação</label>
         <textarea id="promoMotivo" placeholder="Ex: Bom desempenho em operações, tempo de serviço..."></textarea>
       </div>
@@ -404,16 +414,17 @@
 /* ============================================================
    1. CONFIGURAÇÃO
    ============================================================
-   Deixe as duas constantes abaixo VAZIAS ("") para que cada
-   usuário configure o próprio webhook clicando na etiqueta do
-   canto superior direito (fica salvo só no navegador dele).
+   Um webhook por canal. Deixar vazio ("") faz cair no canal de
+   advertências; se TODOS estiverem vazios, cada usuário configura
+   o próprio clicando na etiqueta do canto superior direito.
 
-   Se preferir fixar no código, cole a URL entre as aspas —
-   mas lembre que o código do site é público: qualquer visitante
-   consegue ler a URL e mandar mensagem no seu canal.
+   O código deste site é público: quem abrir o código-fonte lê
+   estas URLs. Se alguma for usada indevidamente, apague o webhook
+   no Discord (o antigo morre na hora), crie outro e troque aqui.
    ============================================================ */
-const WEBHOOK_URL       = "";   // canal de advertências / exonerações
-const PROMO_WEBHOOK_URL = "";   // canal de promoções (vazio = usa o de cima)
+const WEBHOOK_URL            = "https://discord.com/api/webhooks/1538244284443271308/unOuV_b0k2NTLd76elt9RrP_4MjhF3KGwpvPFP47He0_fEwHfapJY064eEosroh2tCWu";  // #advertencias
+const EXONERACAO_WEBHOOK_URL = "";   // #exoneracoes (vazio = cai em #advertencias)
+const PROMO_WEBHOOK_URL      = "";   // #promocoes  (vazio = cai em #advertencias)
 
 const NOME_UNIDADE  = "EXÉRCITO BRASILEIRO";
 const SIGLA_UNIDADE = "E B";
@@ -452,6 +463,9 @@ const LS_KEY_PROMO = 'eb_webhook_promo';
 
 function getWebhook(){
   return WEBHOOK_URL || localStorage.getItem(LS_KEY) || '';
+}
+function getExoneracaoWebhook(){
+  return EXONERACAO_WEBHOOK_URL || getWebhook();
 }
 function getPromoWebhook(){
   return PROMO_WEBHOOK_URL || localStorage.getItem(LS_KEY_PROMO) || getWebhook();
@@ -547,6 +561,13 @@ function wrapText(context, text, x, y, maxWidth, lineHeight){
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* Aceita o ID cru (284640857195610112) ou já no formato <@284640857195610112>.
+   Devolve "" se não for um ID válido do Discord. */
+function limparDiscordId(valor){
+  const m = String(valor || '').trim().match(/^<?@?!?(\d{17,20})>?$/);
+  return m ? m[1] : '';
 }
 
 /* estrela de 5 pontas usada no selo */
@@ -798,7 +819,11 @@ document.getElementById('warnForm').addEventListener('submit', async function(e)
     motivo: document.getElementById('motivo').value.trim(),
     policial: document.getElementById('policial').value.trim(),
     patente: document.getElementById('patente').value.trim(),
+    discordId: limparDiscordId(document.getElementById('discordId').value),
   };
+
+  const discordBruto = document.getElementById('discordId').value.trim();
+  const idInvalido = discordBruto && !data.discordId;
 
   currentData = data;
   emptyState.style.display = 'none';
@@ -815,7 +840,11 @@ document.getElementById('warnForm').addEventListener('submit', async function(e)
   logEntries.unshift(data);
   renderLog();
 
-  showToast(tipoDoc === 'EXONERACAO' ? 'Exoneração emitida com sucesso.' : 'Advertência emitida com sucesso.', 'ok');
+  if(idInvalido){
+    showToast('Documento emitido, mas o ID do Discord é inválido — ninguém será marcado.', 'err');
+  } else {
+    showToast(tipoDoc === 'EXONERACAO' ? 'Exoneração emitida com sucesso.' : 'Advertência emitida com sucesso.', 'ok');
+  }
 });
 
 function renderLog(){
@@ -841,7 +870,9 @@ downloadBtn.addEventListener('click', function(){
 });
 
 sendDiscordBtn.addEventListener('click', async function(){
-  const targetWebhook = getWebhook();
+  const targetWebhook = (currentData && currentData.tipoDoc === 'EXONERACAO')
+    ? getExoneracaoWebhook()
+    : getWebhook();
   if(!targetWebhook){ showToast('Webhook não configurado. Clique na etiqueta no topo da página.', 'err'); return; }
   if(!currentBlob){ showToast('Emita um documento antes de enviar.', 'err'); return; }
 
@@ -871,8 +902,17 @@ sendDiscordBtn.addEventListener('click', async function(){
     fields.push({ name: 'Militar responsável', value: `${currentData.policial} (${currentData.patente})`, inline: false });
     fields.push({ name: 'Motivo', value: currentData.motivo, inline: false });
 
+    // A menção precisa ir no "content": dentro do embed ela aparece, mas não notifica.
+    // allowed_mentions restringe o ping a esse usuário — nada de @everyone vindo do texto.
+    const alvo = currentData.discordId;
+    const aviso = isExoneracao
+      ? `${alvo ? `<@${alvo}> ` : ''}Você foi exonerado(a) do **${NOME_UNIDADE}**.`
+      : `${alvo ? `<@${alvo}> ` : ''}Você recebeu uma **${currentData.gravidade}**.`;
+
     const payload = {
       username: 'Exército Brasileiro · Sistema de Documentos',
+      content: alvo ? aviso : undefined,
+      allowed_mentions: { parse: [], users: alvo ? [alvo] : [] },
       embeds: [{
         title: isExoneracao ? 'Nova exoneração emitida' : 'Nova advertência emitida',
         color: gravColor,
@@ -1005,7 +1045,11 @@ document.getElementById('promoForm').addEventListener('submit', async function(e
     motivo: document.getElementById('promoMotivo').value.trim(),
     responsavel: document.getElementById('promoResponsavel').value.trim(),
     patenteResponsavel: document.getElementById('promoPatenteResponsavel').value.trim(),
+    discordId: limparDiscordId(document.getElementById('promoDiscordId').value),
   };
+
+  const promoBruto = document.getElementById('promoDiscordId').value.trim();
+  const promoIdInvalido = promoBruto && !data.discordId;
 
   currentDataPromo = data;
   emptyStatePromo.style.display = 'none';
@@ -1022,7 +1066,11 @@ document.getElementById('promoForm').addEventListener('submit', async function(e
   logEntriesPromo.unshift(data);
   renderLogPromo();
 
-  showToast('Promoção emitida com sucesso.', 'ok');
+  if(promoIdInvalido){
+    showToast('Promoção emitida, mas o ID do Discord é inválido — ninguém será marcado.', 'err');
+  } else {
+    showToast('Promoção emitida com sucesso.', 'ok');
+  }
 });
 
 function renderLogPromo(){
@@ -1059,8 +1107,14 @@ sendDiscordBtnPromo.addEventListener('click', async function(){
     const form = new FormData();
     form.append('file', currentBlobPromo, filename);
 
+    const alvoPromo = currentDataPromo.discordId;
+
     const payload = {
       username: 'Exército Brasileiro · Sistema de Documentos',
+      content: alvoPromo
+        ? `<@${alvoPromo}> Parabéns! Você foi promovido(a) a **${currentDataPromo.cargoNovo}**.`
+        : undefined,
+      allowed_mentions: { parse: [], users: alvoPromo ? [alvoPromo] : [] },
       embeds: [{
         title: 'Nova promoção emitida',
         color: 13150024,

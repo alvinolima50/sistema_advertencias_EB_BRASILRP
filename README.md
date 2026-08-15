@@ -26,17 +26,17 @@ Cada `git push` novo republica o site automaticamente.
 
 ## Webhook do Discord
 
-Por padrão o site vem **sem webhook fixo**: cada pessoa clica na etiqueta
-"WEBHOOK NÃO CONFIGURADO" (canto superior direito), cola a URL do webhook e ela
-fica salva só no navegador dela (`localStorage`).
-
-Se preferir deixar fixo para todo mundo, preencha as constantes no topo do
-`<script>` do `index.html`:
+Um webhook por canal, nas constantes do topo do `<script>` do `index.html`:
 
 ```js
-const WEBHOOK_URL       = "https://discord.com/api/webhooks/...";
-const PROMO_WEBHOOK_URL = "";   // vazio = usa o mesmo canal acima
+const WEBHOOK_URL            = "https://discord.com/api/webhooks/...";  // #advertencias
+const EXONERACAO_WEBHOOK_URL = "";   // vazio = cai em #advertencias
+const PROMO_WEBHOOK_URL      = "";   // vazio = cai em #advertencias
 ```
+
+Se as três ficarem vazias, o site passa a pedir que cada pessoa configure o
+próprio webhook: basta clicar na etiqueta "WEBHOOK NÃO CONFIGURADO" no canto
+superior direito e colar a URL, que fica salva só no navegador dela.
 
 > Atenção: o código de um site no GitHub Pages é público. Uma URL de webhook
 > escrita ali pode ser lida por qualquer visitante, que passa a conseguir postar
